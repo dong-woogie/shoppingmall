@@ -1,68 +1,93 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
-const saltRound = 10;
-const jwt = require("jsonwebtoken");
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
+const jwt = require('jsonwebtoken');
+const moment = require("moment");
 
 const userSchema = mongoose.Schema({
-  name: {
-    type: String,
-    maxlength: 50,
-  },
-  email: {
-    type: String,
-    trim: true,
-    unique: 1,
-  },
-  password: {
-    type: String,
-    minlength: 5,
-  },
-  role: {
-    type: Number,
-    default: 0,
-  },
-  image: String,
-  token: {
-    type: String,
-  },
-  tokenExp: {
-    type: Number,
-  },
+    name: {
+        type:String,
+        maxlength:50
+    },
+    email: {
+        type:String,
+        trim:true,
+        unique: 1 
+    },
+    password: {
+        type: String,
+        minglength: 5
+    },
+    lastname: {
+        type:String,
+        maxlength: 50
+    },
+    role : {
+        type:Number,
+        default: 0 
+    },
+    image: String,
+    token : {
+        type: String,
+    },
+    tokenExp :{
+        type: Number
+    }
+})
+
+
+userSchema.pre('save', function( next ) {
+    var user = this;
+    
+    if(user.isModified('password')){    
+        // console.log('password changed')
+        bcrypt.genSalt(saltRounds, function(err, salt){
+            if(err) return next(err);
+    
+            bcrypt.hash(user.password, salt, function(err, hash){
+                if(err) return next(err);
+                user.password = hash 
+                next()
+            })
+        })
+    } else {
+        next()
+    }
 });
 
-userSchema.pre("save", function (next) {
-  if (!this.isModified("password")) return next();
-  bcrypt
-    .genSalt(saltRound)
-    .then((salt) => bcrypt.hash(this.password, salt))
-    .then((hashPassword) => {
-      this.password = hashPassword;
-      next();
+userSchema.methods.comparePassword = function(plainPassword,cb){
+    bcrypt.compare(plainPassword, this.password, function(err, isMatch){
+        if (err) return cb(err);
+        cb(null, isMatch)
     })
-    .catch((err) => next(err));
-});
+}
 
-userSchema.methods.comparePassword = async function (plainPassword) {
-  const isMatch = await bcrypt.compare(plainPassword, this.password);
-  if (!isMatch) throw new Error("비밀번호가 틀렸습니다.");
-};
+userSchema.methods.generateToken = function(cb) {
+    var user = this;
+    console.log('user',user)
+    console.log('userSchema', userSchema)
+    var token =  jwt.sign(user._id.toHexString(),'secret')
+    var oneHour = moment().add(1, 'hour').valueOf();
 
-userSchema.methods.generateToken = async function () {
-  // const token = jwt.sign(this._id, "secretToken");
-  // console.log(token);
-  //jsonwebtoken을 이용해서 token생성하기
-  const token = await jwt.sign(this._id.toHexString(), "secretToken");
-  this.token = token;
-  await this.save();
-};
+    user.tokenExp = oneHour;
+    user.token = token;
+    user.save(function (err, user){
+        if(err) return cb(err)
+        cb(null, user);
+    })
+}
 
-userSchema.statics.findByToken = async function (token) {
-  const decoded = await jwt.verify(token, "secretToken");
-  return this.findOne({ _id: decoded, token });
-};
+userSchema.statics.findByToken = function (token, cb) {
+    var user = this;
 
-const User = mongoose.model("User", userSchema);
+    jwt.verify(token,'secret',function(err, decode){
+        user.findOne({"_id":decode, "token":token}, function(err, user){
+            if(err) return cb(err);
+            cb(null, user);
+        })
+    })
+}
 
-module.exports = {
-  User,
-};
+const User = mongoose.model('User', userSchema);
+
+module.exports = { User }

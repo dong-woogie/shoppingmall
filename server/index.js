@@ -1,83 +1,60 @@
 const express = require("express");
 const app = express();
-const port = 5000;
-const mongoose = require("mongoose");
-const { User } = require("./models/User");
-const config = require("../config/key");
+const path = require("path");
+const cors = require('cors')
+
+const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
-const { auth } = require("./middleware/auth");
-mongoose
-  .connect(config.mongoURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    useCreateIndex: true,
-    useFindAndModify: false,
+
+const config = require("./config/key");
+
+// const mongoose = require("mongoose");
+// mongoose
+//   .connect(config.mongoURI, { useNewUrlParser: true })
+//   .then(() => console.log("DB connected"))
+//   .catch(err => console.error(err));
+
+const mongoose = require("mongoose");
+const connect = mongoose.connect(config.mongoURI,
+  {
+    useNewUrlParser: true, useUnifiedTopology: true,
+    useCreateIndex: true, useFindAndModify: false
   })
-  .then(() => console.log("mongodb connected.."))
-  .catch((err) => console.log(err));
+  .then(() => console.log('MongoDB Connected...'))
+  .catch(err => console.log(err));
 
-//application/x-www.form.urlencoded
-app.use(express.urlencoded({ extended: true }));
+app.use(cors())
 
-//application/json
-app.use(express.json());
-
+//to not get any deprecation warning or error
+//support parsing of application/x-www-form-urlencoded post data
+app.use(bodyParser.urlencoded({ extended: true }));
+//to get json data
+// support parsing of application/json type post data
+app.use(bodyParser.json());
 app.use(cookieParser());
 
-app.get("/", (req, res) => res.send("Hello World!"));
+app.use('/api/users', require('./routes/users'));
 
-app.post("/register", (req, res, next) => {
-  const user = new User(req.body);
-  user
-    .save()
-    .then(() => res.status(200).json({ success: true }))
-    .catch((err) => res.json({ success: false, err }));
-});
 
-app.post("/login", async (req, res, next) => {
-  try {
-    const user = await User.findOne({ email: req.body.email });
+//use this to show the image you have in node js server to client (react js)
+//https://stackoverflow.com/questions/48914987/send-image-path-from-node-js-express-server-to-react-client
+app.use('/uploads', express.static('uploads'));
 
-    if (!user) throw new Error("해당 유저가 없습니다.");
-    await user.comparePassword(req.body.password);
-    await user.generateToken();
+// Serve static assets if in production
+if (process.env.NODE_ENV === "production") {
 
-    res
-      .cookie("x_auth", user.token)
-      .status(200)
-      .json({ loginSuccess: true, userId: user._id });
-  } catch (err) {
-    res.json({ success: false, err: err.message });
-  }
-});
+  // Set static folder   
+  // All the javascript and css files will be read and served from this folder
+  app.use(express.static("client/build"));
 
-app.post("/logout", auth, async (req, res) => {
-  const user = await User.findOneAndUpdate(
-    { _id: req.user._id },
-    { token: "" },
-    { new: true }
-  );
-  res
-    .clearCookie("x_auth")
-    .status(200)
-    .json({ logout: true, token: user.token });
-});
-
-app.get("/auth", auth, async (req, res, next) => {
-  res.status(200).json({
-    _id: req.user._id,
-    isAdmin: req.user.role === 0 ? false : true,
-    isAuth: true,
-    email: req.user.email,
-    name: req.user.name,
-    lastname: req.user.lastname,
-    role: req.user.role,
-    image: req.user.image,
+  // index.html for all page routes    html or routing and naviagtion
+  app.get("*", (req, res) => {
+    res.sendFile(path.resolve(__dirname, "../client", "build", "index.html"));
   });
-});
+}
 
-app.get("/api/hello", (req, res) => {
-  res.send("hello woogie~?");
-});
+const port = process.env.PORT || 5000
 
-app.listen(port, () => console.log(`Example app listening on port ${port}`));
+app.listen(port, () => {
+  console.log(`Server Listening on ${port}`)
+});
